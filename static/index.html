@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word Interpreter</title>
+<style>
+  :root {
+    --bg: #faf8f5; --surface: #ffffff; --text: #1f1d1a; --muted: #6b665f;
+    --border: #e6e1d9; --accent: #c2410c; --accent-soft: #fdeee6; --line: #9a948b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161513; --surface: #1f1e1b; --text: #eeeae4; --muted: #a39d94;
+      --border: #34322e; --accent: #fb8a4c; --accent-soft: #3a2519; --line: #6b665f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.55 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  main { max-width: 680px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  form { display: flex; gap: 8px; }
+  input[type=text] {
+    flex: 1; min-width: 0; font: inherit; font-size: 20px; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text);
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button {
+    font: inherit; font-weight: 600; padding: 0 18px; border-radius: 10px; border: 0;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: default; }
+  .opts { display: flex; gap: 16px; align-items: center; margin: 12px 0 0; color: var(--muted); font-size: 14px; flex-wrap: wrap; }
+  select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  .examples { margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .examples a { color: var(--accent); cursor: pointer; margin-right: 10px; text-decoration: none; }
+  .card { margin-top: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
+  .word { font-size: 44px; font-weight: 700; line-height: 1.1; }
+  .reading { font-size: 20px; margin-top: 6px; }
+  .romaji { color: var(--muted); font-size: 18px; }
+  .play { margin-top: 16px; display: flex; gap: 8px; }
+  .play button { padding: 10px 16px; }
+  .play button.secondary { background: var(--accent-soft); color: var(--accent); }
+  dl { display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; margin: 24px 0 0; }
+  dt { color: var(--muted); font-size: 14px; padding-top: 2px; }
+  dd { margin: 0; }
+  .morae span { display: inline-block; padding: 2px 8px; margin: 0 4px 4px 0; border-radius: 6px; background: var(--accent-soft); }
+  .morae span.devoiced { background: transparent; border: 1px dashed var(--line); color: var(--muted); }
+  .pitch svg { display: block; max-width: 100%; height: auto; }
+  .pitch .name { color: var(--muted); font-size: 14px; }
+  .note { color: var(--muted); font-size: 14px; }
+  .error { color: var(--accent); margin-top: 20px; }
+  .loading { color: var(--muted); margin-top: 24px; }
+  @media (max-width: 520px) {
+    dl { grid-template-columns: 1fr; gap: 2px; }
+    dd { margin-bottom: 12px; }
+    .word { font-size: 36px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Word Interpreter</h1>
+  <p class="sub">Type a Japanese word to see and hear how it's pronounced.</p>
+
+  <form id="form">
+    <input id="word" type="text" placeholder="例: 東京" autocomplete="off" autofocus>
+    <button id="go" type="submit">Interpret</button>
+  </form>
+  <div class="opts">
+    <label>Voice
+      <select id="voice">
+        <option value="jf_alpha">jf_alpha (female)</option>
+        <option value="jf_gongitsune">jf_gongitsune (female)</option>
+        <option value="jf_nezumi">jf_nezumi (female)</option>
+        <option value="jf_tebukuro">jf_tebukuro (female)</option>
+        <option value="jm_kumo">jm_kumo (male)</option>
+      </select>
+    </label>
+  </div>
+  <div class="examples">Try:
+    <a>東京</a><a>勉強</a><a>ありがとう</a><a>箸</a><a>橋</a><a>コンピューター</a>
+  </div>
+
+  <div id="out"></div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let current = null;
+
+function pitchSvg(morae, pattern, accent) {
+  // Dots at high/low positions per mora, plus a hollow dot for a following particle.
+  const step = 56, top = 14, bottom = 54, pad = 24;
+  const particleHigh = accent === 0;
+  const levels = [...pattern].map(p => p === "H");
+  levels.push(particleHigh);
+  const n = levels.length;
+  const w = pad * 2 + step * (n - 1);
+  const pts = levels.map((h, i) => [pad + i * step, h ? top : bottom]);
+  const line = pts.map(p => p.join(",")).join(" ");
+  const dots = pts.map(([x, y], i) => i === n - 1
+    ? `<circle cx="${x}" cy="${y}" r="6" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>`
+    : `<circle cx="${x}" cy="${y}" r="6" fill="var(--accent)"/>`).join("");
+  const labels = morae.map((m, i) =>
+    `<text x="${pad + i * step}" y="86" text-anchor="middle" font-size="16" fill="var(--text)">${esc(m)}</text>`).join("")
+    + `<text x="${pad + (n - 1) * step}" y="86" text-anchor="middle" font-size="13" fill="var(--muted)">(が)</text>`;
+  return `<svg viewBox="0 0 ${w} 96" width="${w}" role="img" aria-label="pitch ${pattern}">
+    <polyline points="${line}" fill="none" stroke="var(--line)" stroke-width="2"/>${dots}${labels}</svg>`;
+}
+
+function render(d) {
+  let i = 0;
+  const pitch = d.phrases.map(p => {
+    const m = d.morae.slice(i, i + p.morae); i += p.morae;
+    return `<div>${pitchSvg(m, p.pattern, p.accent)}<div class="name">${esc(p.pattern)} · ${esc(p.name)}</div></div>`;
+  }).join("");
+  const devoiced = new Set(d.devoiced);
+  const morae = d.morae.map(m => `<span class="${devoiced.has(m) ? "devoiced" : ""}">${esc(m)}</span>`).join("");
+
+  $("out").innerHTML = `
+    <div class="card">
+      <div class="word">${esc(d.word)}</div>
+      <div class="reading">${esc(d.reading)}${d.pronounced !== d.reading ? ` <span class="romaji">→ sounds like ${esc(d.pronounced)}</span>` : ""}</div>
+      <div class="romaji">${esc(d.romaji)}</div>
+      <div class="play">
+        <button id="play">▶ Play</button>
+        <button id="playSlow" class="secondary">Slow</button>
+      </div>
+      <dl>
+        ${d.meaning ? `<dt>Meaning</dt><dd>${esc(d.meaning)}</dd>` : ""}
+        <dt>Morae</dt><dd class="morae">${morae} <span class="note" style="background:none">${d.morae.length} beats</span>
+          ${d.devoiced.length ? `<div class="note">Dashed = devoiced (vowel is whispered)</div>` : ""}</dd>
+        ${pitch ? `<dt>Pitch accent</dt><dd class="pitch">${pitch}<div class="note">Hollow dot = a particle like が after the word</div></dd>` : ""}
+        ${d.pronunciation_tips ? `<dt>Tips</dt><dd>${esc(d.pronunciation_tips)}</dd>` : ""}
+        ${d.llm_error ? `<dt>Note</dt><dd class="note">${esc(d.llm_error)}</dd>` : ""}
+      </dl>
+    </div>`;
+  $("play").onclick = () => play(false);
+  $("playSlow").onclick = () => play(true);
+}
+
+let audio = null;
+function play(slow) {
+  if (!current) return;
+  if (audio) audio.pause();
+  const q = new URLSearchParams({ word: current, voice: $("voice").value, slow: slow ? "1" : "0" });
+  audio = new Audio(`/api/audio?${q}`);
+  audio.play().catch(() => {});
+}
+
+async function interpret(word) {
+  word = word.trim();
+  if (!word) return;
+  current = word;
+  $("go").disabled = true;
+  $("out").innerHTML = `<div class="loading">Interpreting ${esc(word)}…</div>`;
+  play(false);  // audio generates in parallel with the LLM call
+  try {
+    const r = await fetch(`/api/interpret?word=${encodeURIComponent(word)}`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    if (word === current) render(d);
+  } catch (e) {
+    $("out").innerHTML = `<div class="error">${esc(e.message)}</div>`;
+  } finally {
+    $("go").disabled = false;
+  }
+}
+
+$("form").onsubmit = (e) => { e.preventDefault(); interpret($("word").value); };
+document.querySelectorAll(".examples a").forEach(a =>
+  a.onclick = () => { $("word").value = a.textContent; interpret(a.textContent); });
+</script>
+</body>
+</html>

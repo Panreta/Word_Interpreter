@@ -1,4 +1,4 @@
-"""Web interface for the Japanese word pronunciation helper.
+"""Web interface for Word Interpreter.
 
 Run:
     python web.py            # then open http://localhost:8765
@@ -6,19 +6,20 @@ Run:
 
 import io
 import os
-import threading
 
-import requests
-import soundfile as sf
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
-from word_interpreter import (DEFAULT_MODEL, JA_VOICES, SAMPLE_RATE, analyze,
-                              explain, synthesize)
+import speech
+from languages import TARGETS, analyze
+from llm import DEFAULT_MODEL, LLM_ERRORS, SOURCE_LANGUAGES, error_message, explain, translate
 
 app = Flask(__name__)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-MODEL = os.environ.get("WORD_INTERPRETER_MODEL", DEFAULT_MODEL)
-tts_lock = threading.Lock()  # Kokoro pipeline is shared and not thread-safe
+MODEL = DEFAULT_MODEL
+
+
+def llm_error(e):
+    return f"LLM unavailable: {error_message(e, MODEL)}."
 
 
 @app.get("/")
@@ -26,38 +27,59 @@ def index():
     return send_from_directory(STATIC_DIR, "index.html")
 
 
+@app.get("/api/targets")
+def targets():
+    return jsonify({code: {"name": t["name"], "voices": t["voices"]} for code, t in TARGETS.items()})
+
+
 @app.get("/api/interpret")
 def interpret():
-    word = request.args.get("word", "").strip()
-    if not word:
+    """Translate (if needed) and analyze the pronunciation."""
+    text = request.args.get("text", "").strip()
+    source = request.args.get("from", "auto")
+    target = request.args.get("to", "ja")
+    if not text:
         return jsonify(error="Please enter a word."), 400
-    info = analyze(word)
+    if source not in ("auto", *SOURCE_LANGUAGES) or target not in TARGETS:
+        return jsonify(error="Bad language choice."), 400
+
+    result = {"input": text, "source_language": target, "alternatives": []}
+    word = text
     try:
-        info.update(explain(info, MODEL))
-    except (requests.ConnectionError, requests.HTTPError) as e:
-        info["llm_error"] = f"LLM unavailable ({e.__class__.__name__}). Is `ollama serve` running?"
-    info["phrases"] = [
-        {"morae": n, "accent": acc, "pattern": pattern, "name": name}
-        for n, acc, pattern, name in info["phrases"]
-    ]
-    return jsonify(info)
+        t = translate(text, target, MODEL, source)
+        word = t["translation"]
+        result.update(source_language=t["source_language"], alternatives=t["alternatives"])
+    except LLM_ERRORS as e:
+        result["llm_error"] = llm_error(e)
+
+    result.update(analyze(word, target))
+    return jsonify(result)
+
+
+@app.get("/api/explain")
+def explain_word():
+    word = request.args.get("word", "").strip()
+    target = request.args.get("to", "ja")
+    if not word or target not in TARGETS:
+        return jsonify(error="Bad request."), 400
+    try:
+        return jsonify(explain(analyze(word, target), MODEL, target))
+    except LLM_ERRORS as e:
+        return jsonify(error=llm_error(e)), 502
 
 
 @app.get("/api/audio")
 def audio():
     word = request.args.get("word", "").strip()
-    voice = request.args.get("voice", "jf_alpha")
-    if not word or voice not in JA_VOICES:
+    target = request.args.get("to", "ja")
+    voice = request.args.get("voice", "")
+    if not word or target not in TARGETS or voice not in TARGETS[target]["voices"]:
         return jsonify(error="Bad request."), 400
-    speed = 0.7 if request.args.get("slow") == "1" else 1.0
-    with tts_lock:
-        samples = synthesize(word, voice, speed)
-    if samples is None:
+    result = speech.synthesize(word, target, voice, slow=request.args.get("slow") == "1")
+    if result is None:
         return jsonify(error="No audio produced."), 500
-    buf = io.BytesIO()
-    sf.write(buf, samples, SAMPLE_RATE, format="WAV")
-    buf.seek(0)
-    return send_file(buf, mimetype="audio/wav")
+    data, mimetype, _ = result
+    return send_file(io.BytesIO(data), mimetype=mimetype)
 
 
 if __name__ == "__main__":

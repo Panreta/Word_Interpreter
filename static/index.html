@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,7 +18,7 @@
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 16px/1.55 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    font: 16px/1.55 system-ui, -apple-system, "Hiragino Sans", "PingFang SC", "Noto Sans CJK JP", sans-serif;
   }
   main { max-width: 680px; margin: 0 auto; padding: 48px 16px 64px; }
   h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -0.01em; }
@@ -35,11 +35,13 @@
   }
   button:disabled { opacity: .6; cursor: default; }
   .opts { display: flex; gap: 16px; align-items: center; margin: 12px 0 0; color: var(--muted); font-size: 14px; flex-wrap: wrap; }
+  .opts label { display: flex; gap: 6px; align-items: center; }
   select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+  select#to { font-weight: 600; color: var(--accent); border-color: var(--accent); }
   .examples { margin-top: 10px; font-size: 14px; color: var(--muted); }
   .examples a { color: var(--accent); cursor: pointer; margin-right: 10px; text-decoration: none; }
   .card { margin-top: 28px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
-  .word { font-size: 44px; font-weight: 700; line-height: 1.1; }
+  .word { font-size: 44px; font-weight: 700; line-height: 1.1; overflow-wrap: anywhere; }
   .reading { font-size: 20px; margin-top: 6px; }
   .romaji { color: var(--muted); font-size: 18px; }
   .play { margin-top: 16px; display: flex; gap: 8px; }
@@ -47,13 +49,24 @@
   .play button.secondary { background: var(--accent-soft); color: var(--accent); }
   dl { display: grid; grid-template-columns: 120px 1fr; gap: 10px 16px; margin: 24px 0 0; }
   dt { color: var(--muted); font-size: 14px; padding-top: 2px; }
-  dd { margin: 0; }
+  dd { margin: 0; min-width: 0; }
   .morae span { display: inline-block; padding: 2px 8px; margin: 0 4px 4px 0; border-radius: 6px; background: var(--accent-soft); }
   .morae span.devoiced { background: transparent; border: 1px dashed var(--line); color: var(--muted); }
   .pitch svg { display: block; max-width: 100%; height: auto; }
-  .pitch .name { color: var(--muted); font-size: 14px; }
+  .name { color: var(--muted); font-size: 14px; }
+  .tones { display: flex; flex-wrap: wrap; gap: 14px; }
+  .tone { text-align: center; min-width: 64px; }
+  .tone .char { font-size: 24px; line-height: 1.2; }
+  .tone .roman { font-size: 15px; }
+  .tone .label { color: var(--muted); font-size: 12px; line-height: 1.3; max-width: 96px; }
+  .ipa { font-family: "Charis SIL", "Doulos SIL", "Gentium Plus", "Lucida Grande", serif; }
   .note { color: var(--muted); font-size: 14px; }
   .error { color: var(--accent); margin-top: 20px; }
+  .translation { color: var(--muted); font-size: 15px; margin-bottom: 14px; }
+  .translation b { color: var(--text); font-weight: 600; }
+  .alts { margin-top: 4px; }
+  .alts a { color: var(--accent); cursor: pointer; margin-right: 10px; text-decoration: none; }
+  .pending { color: var(--muted); font-style: italic; }
   .loading { color: var(--muted); margin-top: 24px; }
   @media (max-width: 520px) {
     dl { grid-template-columns: 1fr; gap: 2px; }
@@ -65,25 +78,35 @@
 <body>
 <main>
   <h1>Word Interpreter</h1>
-  <p class="sub">Type a Japanese word to see and hear how it's pronounced.</p>
+  <p class="sub" id="sub"></p>
 
   <form id="form">
-    <input id="word" type="text" placeholder="例: 東京" autocomplete="off" autofocus>
-    <button id="go" type="submit">Interpret</button>
+    <input id="word" type="text" autocomplete="off" autofocus>
+    <button id="go" type="submit"></button>
   </form>
   <div class="opts">
-    <label>Voice
-      <select id="voice">
-        <option value="jf_alpha">jf_alpha (female)</option>
-        <option value="jf_gongitsune">jf_gongitsune (female)</option>
-        <option value="jf_nezumi">jf_nezumi (female)</option>
-        <option value="jf_tebukuro">jf_tebukuro (female)</option>
-        <option value="jm_kumo">jm_kumo (male)</option>
+    <label><span id="toLabel"></span>
+      <select id="to">
+        <option value="ja">日本語</option>
+        <option value="zh">普通话</option>
+        <option value="yue">粵語</option>
+        <option value="en">English</option>
+        <option value="es">Español</option>
       </select>
     </label>
+    <label><span id="fromLabel"></span>
+      <select id="from">
+        <option value="auto"></option>
+        <option value="ja">日本語</option>
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+        <option value="es">Español</option>
+      </select>
+    </label>
+    <label><span id="voiceLabel"></span> <select id="voice"></select></label>
   </div>
-  <div class="examples">Try:
-    <a>東京</a><a>勉強</a><a>ありがとう</a><a>箸</a><a>橋</a><a>コンピューター</a>
+  <div class="examples"><span id="tryLabel"></span>
+    <a>apple</a><a>thank you</a><a>good morning</a><a>谢谢</a><a>火车站</a><a>ありがとう</a><a>gracias</a>
   </div>
 
   <div id="out"></div>
@@ -92,90 +115,290 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-let current = null;
+
+// Everything on the page follows the output language.
+const T = {
+  ja: {
+    htmlLang: "ja",
+    sub: "どの言語の単語でも入力すると、日本語での言い方・発音・音声を表示します。",
+    placeholder: "例：apple・谢谢・ありがとう", go: "変換", to: "出力", from: "入力", auto: "自動判定",
+    voice: "声", try: "例：", working: "処理中…",
+    meaning: "意味", tips: "発音のコツ", note: "注意", thinking: "考え中…", also: "ほかの言い方：",
+    soundsLike: "実際の発音", play: "▶ 再生", slow: "ゆっくり",
+    morae: "拍（モーラ）", beats: n => `${n}拍`, pitch: "アクセント",
+    devoicedNote: "点線 = 母音の無声化（ささやくように発音）",
+    particleNote: "白丸 = 後に続く助詞（「が」など）",
+    heiban: "平板型 — 下がらない。後の助詞も高いまま", atamadaka: "頭高型 — 1拍目が高く、その後下がる",
+    odaka: "尾高型 — 後に続く助詞で下がる", nakadaka: k => `中高型 — ${k}拍目の後で下がる`,
+    tones: "声調", toneChange: "声調変化", ipa: "発音記号（IPA）", contourNote: "線は音の高さ（下＝低い、上＝高い）",
+    zhTones: { 1: "第1声 · 高く平ら", 2: "第2声 · 上がる", 3: "第3声 · 低く下がって上がる", 4: "第4声 · 下がる", 5: "軽声" },
+    yueTones: { 1: "第1声 · 高く平ら", 2: "第2声 · 高く上がる", 3: "第3声 · 中くらいで平ら", 4: "第4声 · 低く下がる", 5: "第5声 · 低く上がる", 6: "第6声 · 低く平ら" },
+    langs: { ja: "日本語", zh: "中国語", en: "英語", es: "スペイン語" },
+  },
+  zh: {
+    htmlLang: "zh-Hans",
+    sub: "输入任何语言的单词，查看并聆听它用普通话怎么说。",
+    placeholder: "例如：apple、ありがとう、gracias", go: "翻译", to: "输出", from: "输入", auto: "自动识别",
+    voice: "声音", try: "试试：", working: "处理中…",
+    meaning: "释义", tips: "发音提示", note: "提示", thinking: "思考中…", also: "其他说法：",
+    soundsLike: "实际读作", play: "▶ 播放", slow: "慢速",
+    morae: "音拍", beats: n => `${n} 个音拍`, pitch: "音调",
+    devoicedNote: "虚线 = 元音清化（几乎不发声）", particleNote: "空心点 = 后接助词（如 が）",
+    heiban: "平板型 — 不降调，后接助词仍为高音", atamadaka: "头高型 — 第一拍高，之后下降",
+    odaka: "尾高型 — 后接助词时才下降", nakadaka: k => `中高型 — 第 ${k} 拍之后下降`,
+    tones: "声调", toneChange: "变调", ipa: "音标（IPA）", contourNote: "线条表示音高（下＝低，上＝高）",
+    zhTones: { 1: "第一声 · 高平", 2: "第二声 · 上扬", 3: "第三声 · 降升", 4: "第四声 · 下降", 5: "轻声" },
+    yueTones: { 1: "第1声 · 高平", 2: "第2声 · 高升", 3: "第3声 · 中平", 4: "第4声 · 低降", 5: "第5声 · 低升", 6: "第6声 · 低平" },
+    langs: { ja: "日语", zh: "中文", en: "英语", es: "西班牙语" },
+  },
+  yue: {
+    htmlLang: "zh-Hant-HK",
+    sub: "輸入任何語言嘅詞語，睇吓同聽吓用廣東話點講。",
+    placeholder: "例如：apple、ありがとう、gracias", go: "翻譯", to: "輸出", from: "輸入", auto: "自動識別",
+    voice: "聲音", try: "試吓：", working: "處理緊…",
+    meaning: "意思", tips: "發音貼士", note: "備註", thinking: "諗緊…", also: "其他講法：",
+    soundsLike: "實際讀做", play: "▶ 播放", slow: "慢速",
+    morae: "音拍", beats: n => `${n} 個音拍`, pitch: "音調",
+    devoicedNote: "虛線 = 母音清化（輕到幾乎聽唔到）", particleNote: "空心點 = 後面跟住嘅助詞（例如 が）",
+    heiban: "平板型 — 唔會跌，後面嘅助詞都係高音", atamadaka: "頭高型 — 第一拍高，之後跌落嚟",
+    odaka: "尾高型 — 去到後面嘅助詞先跌", nakadaka: k => `中高型 — 第 ${k} 拍之後跌`,
+    tones: "聲調", toneChange: "變調", ipa: "音標（IPA）", contourNote: "線代表音高（下＝低，上＝高）",
+    zhTones: { 1: "第一聲 · 高平", 2: "第二聲 · 上揚", 3: "第三聲 · 降升", 4: "第四聲 · 下降", 5: "輕聲" },
+    yueTones: { 1: "第1聲 · 高平", 2: "第2聲 · 高升", 3: "第3聲 · 中平", 4: "第4聲 · 低降", 5: "第5聲 · 低升", 6: "第6聲 · 低平" },
+    langs: { ja: "日文", zh: "中文", en: "英文", es: "西班牙文" },
+  },
+  en: {
+    htmlLang: "en",
+    sub: "Type a word in any language to see and hear how to say it in English.",
+    placeholder: "e.g. 谢谢 · ありがとう · gracias", go: "Interpret", to: "Output", from: "Input", auto: "Auto-detect",
+    voice: "Voice", try: "Try:", working: "Working…",
+    meaning: "Meaning", tips: "Tips", note: "Note", thinking: "Thinking…", also: "Also:",
+    soundsLike: "sounds like", play: "▶ Play", slow: "Slow",
+    morae: "Morae", beats: n => `${n} beats`, pitch: "Pitch accent",
+    devoicedNote: "Dashed = devoiced (vowel is whispered)", particleNote: "Hollow dot = a particle like が after the word",
+    heiban: "heiban — flat, no drop; a following particle stays high", atamadaka: "atamadaka — high first mora, then drops",
+    odaka: "odaka — drops only on a following particle", nakadaka: k => `nakadaka — drops after mora ${k}`,
+    tones: "Tones", toneChange: "tone change", ipa: "Pronunciation (IPA)", contourNote: "Lines show pitch (bottom = low, top = high)",
+    zhTones: { 1: "1st tone · high level", 2: "2nd tone · rising", 3: "3rd tone · dipping", 4: "4th tone · falling", 5: "neutral tone" },
+    yueTones: { 1: "tone 1 · high level", 2: "tone 2 · high rising", 3: "tone 3 · mid level", 4: "tone 4 · low falling", 5: "tone 5 · low rising", 6: "tone 6 · low level" },
+    langs: { ja: "Japanese", zh: "Chinese", en: "English", es: "Spanish" },
+  },
+  es: {
+    htmlLang: "es",
+    sub: "Escribe una palabra en cualquier idioma para ver y escuchar cómo se dice en español.",
+    placeholder: "p. ej. apple · 谢谢 · ありがとう", go: "Interpretar", to: "Salida", from: "Entrada", auto: "Detectar",
+    voice: "Voz", try: "Prueba:", working: "Procesando…",
+    meaning: "Significado", tips: "Consejos", note: "Nota", thinking: "Pensando…", also: "También:",
+    soundsLike: "suena como", play: "▶ Reproducir", slow: "Lento",
+    morae: "Moras", beats: n => `${n} moras`, pitch: "Acento tonal",
+    devoicedNote: "Línea discontinua = vocal ensordecida (casi susurrada)", particleNote: "Punto hueco = una partícula como が después de la palabra",
+    heiban: "heiban — plano, sin bajada; la partícula siguiente queda alta", atamadaka: "atamadaka — la primera mora es alta y luego baja",
+    odaka: "odaka — baja solo en la partícula siguiente", nakadaka: k => `nakadaka — baja después de la mora ${k}`,
+    tones: "Tonos", toneChange: "cambio de tono", ipa: "Pronunciación (AFI)", contourNote: "Las líneas muestran el tono (abajo = grave, arriba = agudo)",
+    zhTones: { 1: "1.er tono · alto y plano", 2: "2.º tono · ascendente", 3: "3.er tono · baja y sube", 4: "4.º tono · descendente", 5: "tono neutro" },
+    yueTones: { 1: "tono 1 · alto plano", 2: "tono 2 · alto ascendente", 3: "tono 3 · medio plano", 4: "tono 4 · bajo descendente", 5: "tono 5 · bajo ascendente", 6: "tono 6 · bajo plano" },
+    langs: { ja: "japonés", zh: "chino", en: "inglés", es: "español" },
+  },
+};
+
+// Chao tone numbers (1 = lowest, 5 = highest) for drawing tone contours.
+const CONTOURS = {
+  zh: { 1: [5, 5], 2: [3, 5], 3: [2, 1, 4], 4: [5, 1], 5: [3] },
+  yue: { 1: [5, 5], 2: [2, 5], 3: [3, 3], 4: [2, 1], 5: [2, 3], 6: [2, 2] },
+};
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+let targets = {};
+let lastData = null, lastInput = null, current = null, requestId = 0, audio = null;
+const target = () => $("to").value;
+const t = () => T[target()];
+
+function applyLanguage() {
+  const l = t();
+  document.documentElement.lang = l.htmlLang;
+  $("sub").textContent = l.sub;
+  $("word").placeholder = l.placeholder;
+  $("go").textContent = l.go;
+  $("toLabel").textContent = l.to;
+  $("fromLabel").textContent = l.from;
+  $("from").options[0].textContent = l.auto;
+  $("voiceLabel").textContent = l.voice;
+  $("tryLabel").textContent = l.try;
+  const voices = targets[target()]?.voices || [];
+  const saved = store.get(`voice-${target()}`);
+  $("voice").innerHTML = voices.map(v => `<option${v === saved ? " selected" : ""}>${esc(v)}</option>`).join("");
+}
+
+function pitchName(accent, n) {
+  const l = t();
+  if (accent === 0) return l.heiban;
+  if (accent === 1) return l.atamadaka;
+  if (accent === n) return l.odaka;
+  return l.nakadaka(accent);
+}
 
 function pitchSvg(morae, pattern, accent) {
-  // Dots at high/low positions per mora, plus a hollow dot for a following particle.
+  // Japanese: dots at high/low per mora, plus a hollow dot for a following particle.
   const step = 56, top = 14, bottom = 54, pad = 24;
-  const particleHigh = accent === 0;
   const levels = [...pattern].map(p => p === "H");
-  levels.push(particleHigh);
+  levels.push(accent === 0);
   const n = levels.length;
   const w = pad * 2 + step * (n - 1);
   const pts = levels.map((h, i) => [pad + i * step, h ? top : bottom]);
-  const line = pts.map(p => p.join(",")).join(" ");
   const dots = pts.map(([x, y], i) => i === n - 1
     ? `<circle cx="${x}" cy="${y}" r="6" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>`
     : `<circle cx="${x}" cy="${y}" r="6" fill="var(--accent)"/>`).join("");
   const labels = morae.map((m, i) =>
     `<text x="${pad + i * step}" y="86" text-anchor="middle" font-size="16" fill="var(--text)">${esc(m)}</text>`).join("")
     + `<text x="${pad + (n - 1) * step}" y="86" text-anchor="middle" font-size="13" fill="var(--muted)">(が)</text>`;
-  return `<svg viewBox="0 0 ${w} 96" width="${w}" role="img" aria-label="pitch ${pattern}">
-    <polyline points="${line}" fill="none" stroke="var(--line)" stroke-width="2"/>${dots}${labels}</svg>`;
+  return `<svg viewBox="0 0 ${w} 96" width="${w}" role="img" aria-label="${esc(pattern)}">
+    <polyline points="${pts.map(p => p.join(",")).join(" ")}" fill="none" stroke="var(--line)" stroke-width="2"/>${dots}${labels}</svg>`;
+}
+
+function toneSvg(levels) {
+  // Mandarin/Cantonese: one contour line per syllable on a 5-level pitch scale.
+  const w = 56, h = 48, y = v => 6 + (5 - v) * 9;
+  const guide = `<line x1="4" y1="${y(1)}" x2="4" y2="${y(5)}" stroke="var(--border)" stroke-width="2"/>`;
+  if (levels.length === 1) {
+    return `<svg width="${w}" height="${h}" aria-hidden="true">${guide}<circle cx="${w / 2}" cy="${y(levels[0])}" r="4" fill="var(--accent)"/></svg>`;
+  }
+  const pts = levels.map((v, i) => `${12 + i * (w - 20) / (levels.length - 1)},${y(v)}`).join(" ");
+  return `<svg width="${w}" height="${h}" aria-hidden="true">${guide}<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+function pronunciationHead(d, l) {
+  if (d.target === "ja") {
+    return `<div class="reading">${esc(d.reading)}${d.pronounced !== d.reading ? ` <span class="romaji">→ ${l.soundsLike} ${esc(d.pronounced)}</span>` : ""}</div>
+      <div class="romaji">${esc(d.romaji)}</div>`;
+  }
+  if (d.target === "zh" || d.target === "yue") {
+    return `<div class="reading">${esc(d.romanization)}</div>
+      ${d.spoken ? `<div class="romaji">${l.soundsLike} ${esc(d.spoken)} (${l.toneChange})</div>` : ""}`;
+  }
+  return `<div class="reading ipa">${esc(d.romanization)}</div>`;
+}
+
+function pronunciationRows(d, l) {
+  if (d.target === "ja") {
+    let i = 0;
+    const pitch = d.phrases.map(p => {
+      const m = d.morae.slice(i, i + p.morae); i += p.morae;
+      return `<div>${pitchSvg(m, p.pattern, p.accent)}<div class="name">${esc(p.pattern)} · ${esc(pitchName(p.accent, p.morae))}</div></div>`;
+    }).join("");
+    const devoiced = new Set(d.devoiced);
+    const morae = d.morae.map(m => `<span class="${devoiced.has(m) ? "devoiced" : ""}">${esc(m)}</span>`).join("");
+    return `<dt>${l.morae}</dt><dd class="morae">${morae} <span class="note">${l.beats(d.morae.length)}</span>
+        ${d.devoiced.length ? `<div class="note">${l.devoicedNote}</div>` : ""}</dd>
+      ${pitch ? `<dt>${l.pitch}</dt><dd class="pitch">${pitch}<div class="note">${l.particleNote}</div></dd>` : ""}`;
+  }
+  if (d.target === "zh" || d.target === "yue") {
+    const names = d.target === "zh" ? l.zhTones : l.yueTones;
+    const units = d.units.map(u => `<div class="tone">${toneSvg(CONTOURS[d.target][u.tone])}
+        <div class="char">${esc(u.text)}</div><div class="roman">${esc(u.roman)}</div>
+        <div class="label">${esc(names[u.tone])}</div></div>`).join("");
+    return units ? `<dt>${l.tones}</dt><dd><div class="tones">${units}</div><div class="note">${l.contourNote}</div></dd>` : "";
+  }
+  return `<dt>${l.ipa}</dt><dd class="ipa">${esc(d.romanization)}</dd>`;
 }
 
 function render(d) {
-  let i = 0;
-  const pitch = d.phrases.map(p => {
-    const m = d.morae.slice(i, i + p.morae); i += p.morae;
-    return `<div>${pitchSvg(m, p.pattern, p.accent)}<div class="name">${esc(p.pattern)} · ${esc(p.name)}</div></div>`;
-  }).join("");
-  const devoiced = new Set(d.devoiced);
-  const morae = d.morae.map(m => `<span class="${devoiced.has(m) ? "devoiced" : ""}">${esc(m)}</span>`).join("");
-
+  lastData = d;
+  const l = t();
   $("out").innerHTML = `
     <div class="card">
+      ${d.word !== d.input ? `<div class="translation">${esc(d.input)} ${l.langs[d.source_language] ? `(${l.langs[d.source_language]})` : ""} → <b>${esc(d.word)}</b>
+        ${d.alternatives.length ? `<div class="alts">${l.also} ${d.alternatives.map(a => `<a data-word="${esc(a)}">${esc(a)}</a>`).join("")}</div>` : ""}</div>` : ""}
       <div class="word">${esc(d.word)}</div>
-      <div class="reading">${esc(d.reading)}${d.pronounced !== d.reading ? ` <span class="romaji">→ sounds like ${esc(d.pronounced)}</span>` : ""}</div>
-      <div class="romaji">${esc(d.romaji)}</div>
+      ${pronunciationHead(d, l)}
       <div class="play">
-        <button id="play">▶ Play</button>
-        <button id="playSlow" class="secondary">Slow</button>
+        <button id="play">${l.play}</button>
+        <button id="playSlow" class="secondary">${l.slow}</button>
       </div>
       <dl>
-        ${d.meaning ? `<dt>Meaning</dt><dd>${esc(d.meaning)}</dd>` : ""}
-        <dt>Morae</dt><dd class="morae">${morae} <span class="note" style="background:none">${d.morae.length} beats</span>
-          ${d.devoiced.length ? `<div class="note">Dashed = devoiced (vowel is whispered)</div>` : ""}</dd>
-        ${pitch ? `<dt>Pitch accent</dt><dd class="pitch">${pitch}<div class="note">Hollow dot = a particle like が after the word</div></dd>` : ""}
-        ${d.pronunciation_tips ? `<dt>Tips</dt><dd>${esc(d.pronunciation_tips)}</dd>` : ""}
-        ${d.llm_error ? `<dt>Note</dt><dd class="note">${esc(d.llm_error)}</dd>` : ""}
+        <dt>${l.meaning}</dt><dd id="meaning" class="pending">${l.thinking}</dd>
+        ${pronunciationRows(d, l)}
+        <dt>${l.tips}</dt><dd id="tips" class="pending">${l.thinking}</dd>
+        ${d.llm_error ? `<dt>${l.note}</dt><dd class="note">${esc(d.llm_error)}</dd>` : ""}
       </dl>
     </div>`;
+  // Alternatives are already in the output language, so don't translate them again.
+  document.querySelectorAll(".alts a").forEach(a =>
+    a.onclick = () => interpret(a.dataset.word, target()));
   $("play").onclick = () => play(false);
   $("playSlow").onclick = () => play(true);
 }
 
-let audio = null;
 function play(slow) {
-  if (!current) return;
+  if (!lastData) return;
   if (audio) audio.pause();
-  const q = new URLSearchParams({ word: current, voice: $("voice").value, slow: slow ? "1" : "0" });
+  const q = new URLSearchParams({ word: lastData.word, to: lastData.target, voice: $("voice").value, slow: slow ? "1" : "0" });
   audio = new Audio(`/api/audio?${q}`);
   audio.play().catch(() => {});
 }
 
-async function interpret(word) {
-  word = word.trim();
-  if (!word) return;
-  current = word;
+async function interpret(text, from = $("from").value) {
+  text = text.trim();
+  if (!text) return;
+  lastInput = text;
+  const id = ++requestId;
   $("go").disabled = true;
-  $("out").innerHTML = `<div class="loading">Interpreting ${esc(word)}…</div>`;
-  play(false);  // audio generates in parallel with the LLM call
+  $("out").innerHTML = `<div class="loading">${t().working}</div>`;
   try {
-    const r = await fetch(`/api/interpret?word=${encodeURIComponent(word)}`);
+    const r = await fetch(`/api/interpret?${new URLSearchParams({ text, from, to: target() })}`);
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || r.statusText);
-    if (word === current) render(d);
+    if (id !== requestId) return;
+    render(d);
+    play(false);
+    explainWord(d, id);
   } catch (e) {
-    $("out").innerHTML = `<div class="error">${esc(e.message)}</div>`;
+    if (id === requestId) $("out").innerHTML = `<div class="error">${esc(e.message)}</div>`;
   } finally {
-    $("go").disabled = false;
+    if (id === requestId) $("go").disabled = false;
+  }
+}
+
+async function explainWord(d, id) {
+  const set = (meaning, tips) => {
+    if (id !== requestId) return;
+    $("meaning").textContent = meaning; $("tips").textContent = tips;
+    $("meaning").classList.remove("pending"); $("tips").classList.remove("pending");
+  };
+  try {
+    const r = await fetch(`/api/explain?${new URLSearchParams({ word: d.word, to: d.target })}`);
+    const e = await r.json();
+    if (!r.ok) throw new Error(e.error || r.statusText);
+    set(e.meaning, e.pronunciation_tips);
+  } catch (e) {
+    set("—", e.message);
   }
 }
 
 $("form").onsubmit = (e) => { e.preventDefault(); interpret($("word").value); };
 document.querySelectorAll(".examples a").forEach(a =>
   a.onclick = () => { $("word").value = a.textContent; interpret(a.textContent); });
+$("to").onchange = () => {
+  store.set("to", target());
+  applyLanguage();
+  // Same input, new output language: redo everything in that language.
+  if (lastInput) interpret(lastInput);
+  else $("out").innerHTML = "";
+};
+$("from").onchange = () => store.set("from", $("from").value);
+$("voice").onchange = () => store.set(`voice-${target()}`, $("voice").value);
+
+(async () => {
+  const savedTo = store.get("to"), savedFrom = store.get("from");
+  if (savedTo && T[savedTo]) $("to").value = savedTo;
+  if (savedFrom) $("from").value = savedFrom;
+  applyLanguage();
+  try { targets = await (await fetch("/api/targets")).json(); } catch {}
+  applyLanguage();
+})();
 </script>
 </body>
 </html>

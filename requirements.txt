@@ -1,5 +1,8 @@
 kokoro>=0.9.4
-misaki[ja]
+misaki[ja,zh]
+pypinyin
+ToJyutping
+edge-tts
 soundfile
 requests
 flask

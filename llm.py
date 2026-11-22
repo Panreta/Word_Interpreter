@@ -1,4 +1,8 @@
-"""Free local LLM (via Ollama): translation into the target language, and explanations."""
+"""LLM: translation into the target language, and explanations.
+
+Uses a hosted OpenAI-compatible API when LLM_API_KEY (or GROQ_API_KEY) is set —
+Groq's free tier by default — otherwise a free local model through Ollama.
+"""
 
 import json
 import os
@@ -8,8 +12,12 @@ import requests
 
 from languages import TARGETS, is_valid_word, llm_facts
 
+LLM_API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("GROQ_API_KEY")
+LLM_API_URL = os.environ.get("LLM_API_URL", "https://api.groq.com/openai/v1")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-DEFAULT_MODEL = os.environ.get("WORD_INTERPRETER_MODEL", "qwen2.5:7b")
+HOSTED = bool(LLM_API_KEY)
+DEFAULT_MODEL = os.environ.get("WORD_INTERPRETER_MODEL") or (
+    "openai/gpt-oss-120b" if HOSTED else "qwen2.5:7b")
 
 SOURCE_LANGUAGES = {"ja": "Japanese", "zh": "Chinese", "en": "English", "es": "Spanish"}
 
@@ -28,40 +36,71 @@ class LLMError(Exception):
     pass
 
 
-LLM_ERRORS = (requests.ConnectionError, requests.HTTPError, LLMError)
+LLM_ERRORS = (requests.ConnectionError, requests.Timeout, requests.HTTPError, LLMError)
 
 
 def error_message(e, model=DEFAULT_MODEL):
     if isinstance(e, LLMError):
         return str(e)
-    if isinstance(e, requests.ConnectionError):
-        return f"cannot reach Ollama at {OLLAMA_URL} — run `ollama serve`"
+    if isinstance(e, (requests.ConnectionError, requests.Timeout)):
+        return (f"cannot reach the LLM API at {LLM_API_URL}" if HOSTED
+                else f"cannot reach Ollama at {OLLAMA_URL} — run `ollama serve`")
+    status = e.response.status_code
+    if HOSTED and status == 429:
+        return "the free LLM tier's rate limit was reached; please try again in a minute"
+    if HOSTED and status == 401:
+        return "the LLM API key is invalid"
+    if HOSTED:
+        return f"LLM API error {status} (model {model})"
     return f"{e.response.text.strip()} — try `ollama pull {model}`"
 
 
-def ask_ollama(system, user, schema, model, temperature=0.2):
-    # Small models occasionally loop and emit truncated JSON; retry once, warmer.
+def _chat_ollama(system, user, schema, model, temperature):
+    resp = requests.post(
+        f"{OLLAMA_URL}/api/chat",
+        json={
+            "model": model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+            "format": schema,
+            "stream": False,
+            "options": {"temperature": temperature, "repeat_penalty": 1.15, "num_predict": 400},
+        },
+        timeout=180,
+    )
+    resp.raise_for_status()
+    return resp.json()["message"]["content"]
+
+
+def _chat_hosted(system, user, schema, model, temperature):
+    # JSON mode is widely supported; strict schemas aren't, so describe the schema in the prompt.
+    system += "\nReturn a JSON object matching this JSON schema:\n" + json.dumps(schema)
+    resp = requests.post(
+        f"{LLM_API_URL}/chat/completions",
+        headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+        json={
+            "model": model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+            "response_format": {"type": "json_object"},
+            "temperature": temperature,
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def ask_llm(system, user, schema, model, temperature=0.2):
+    chat = _chat_hosted if HOSTED else _chat_ollama
+    # Models occasionally emit invalid JSON; retry once, warmer.
     for attempt_temperature in (temperature, max(temperature, 0.7)):
-        resp = requests.post(
-            f"{OLLAMA_URL}/api/chat",
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "format": schema,
-                "stream": False,
-                "options": {"temperature": attempt_temperature, "repeat_penalty": 1.15,
-                            "num_predict": 400},
-            },
-            timeout=180,
-        )
-        resp.raise_for_status()
         try:
-            return json.loads(resp.json()["message"]["content"])
+            result = json.loads(chat(system, user, schema, model, attempt_temperature))
         except json.JSONDecodeError:
             continue
+        if all(key in result for key in schema["required"]):
+            return result
     raise LLMError("the model returned an invalid answer; please try again")
 
 
@@ -100,7 +139,7 @@ TARGET_NOTES = {
 }
 
 TRANSLATION_PROMPT = """You translate words for a language learner.
-The input is a word or short phrase in {source}. Translate it into {target}.
+The input is a word, phrase or sentence in {source}. Translate it into {target}.
 Respond ONLY with JSON:
 - source_language: the input's language: "ja", "zh", "en", "es" or "other"
 - translation: the single most natural, common {target} equivalent, {note}.
@@ -124,7 +163,7 @@ def translate(text, target, model, source="auto"):
     system = TRANSLATION_PROMPT.format(source=described, target=TARGETS[target]["llm"],
                                        note=TARGET_NOTES[target])
     for temperature in (0, 0.6):  # retry once if the answer isn't in the target's script
-        result = ask_ollama(system, text, TRANSLATION_SCHEMA, model, temperature)
+        result = ask_llm(system, text, TRANSLATION_SCHEMA, model, temperature)
         candidates = [c.strip() for c in [result["translation"], *result["alternatives"]]]
         valid = list(dict.fromkeys(c for c in candidates if c and is_valid_word(c, target)))
         if valid:
@@ -171,12 +210,12 @@ def explain(info, model, lang="en"):
     system = EXPLANATION_PROMPT.format(target=TARGETS[target]["llm"], focus=TIP_FOCUS[target],
                                        language=EXPLAIN_LANGUAGES[lang])
     facts = json.dumps(llm_facts(info), ensure_ascii=False)
-    result = ask_ollama(system, facts, EXPLANATION_SCHEMA, model)
+    result = ask_llm(system, facts, EXPLANATION_SCHEMA, model)
     # Small models sometimes drift into English; retry once, more firmly, for CJK output.
     if lang in ("ja", "zh", "yue") and mostly_latin(result["meaning"]):
         system += (f"\nIMPORTANT: the meaning must be written in {EXPLAIN_LANGUAGES[lang]}, "
                    "not in English. Explain it as a native-language dictionary would.")
-        result = ask_ollama(system, facts, EXPLANATION_SCHEMA, model, temperature=0.7)
+        result = ask_llm(system, facts, EXPLANATION_SCHEMA, model, temperature=0.7)
     return result
 
 

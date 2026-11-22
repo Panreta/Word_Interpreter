@@ -7,6 +7,7 @@ word is translated by a free local LLM (via Ollama) if needed, then you get:
     pitch accent; Mandarin pinyin and tones; Cantonese Jyutping and tones;
     English/Spanish IPA,
   * its meaning and pronunciation tips, written in the output language (LLM),
+  * a word-by-word breakdown with English glosses (LLM),
   * the word spoken aloud (Kokoro TTS; edge-tts for Cantonese).
 
 Usage:
@@ -26,7 +27,7 @@ warnings.filterwarnings("ignore")
 
 import speech
 from languages import CANTONESE_TONES, MANDARIN_TONES, TARGETS, analyze
-from llm import (DEFAULT_MODEL, LLM_ERRORS, SOURCE_LANGUAGES, error_message, explain,
+from llm import (DEFAULT_MODEL, LLM_ERRORS, SOURCE_LANGUAGES, breakdown, error_message, explain,
                  translate)
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
@@ -105,6 +106,11 @@ def interpret(text, args):
             extra = explain(info, args.model, args.to)
             print(f"  Meaning     : {extra['meaning']}")
             print(f"  Tips        : {extra['pronunciation_tips']}")
+            parts = breakdown(word, args.to, args.model)
+            if parts:
+                print("  Word by word:")
+                for part in parts:
+                    print(f"      {part['text']}  {part['gloss']}")
         except LLM_ERRORS as e:
             print(f"  (LLM skipped: {error_message(e, args.model)})")
 

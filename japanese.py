@@ -155,3 +155,17 @@ def analyze(word):
         "romaji": " ".join(romaji_parts),
         "phrases": phrases,
     }
+
+
+def split_words(text):
+    """Split Japanese text into words with OpenJTalk, keeping auxiliary-verb chains
+    (ござい + ます) together and dropping punctuation."""
+    words = []
+    for f in pyopenjtalk.run_frontend(text):
+        if f["pos"] == "記号":
+            continue
+        if f["pos"] == "助動詞" and words and words[-1][1] == "助動詞":
+            words[-1][0] += f["string"]
+        else:
+            words.append([f["string"], f["pos"]])
+    return [w for w, _ in words]

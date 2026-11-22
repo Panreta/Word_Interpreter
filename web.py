@@ -14,7 +14,8 @@ from flask import Flask, jsonify, request, send_file, send_from_directory
 
 import speech
 from languages import TARGETS, analyze
-from llm import DEFAULT_MODEL, LLM_ERRORS, SOURCE_LANGUAGES, error_message, explain, translate
+from llm import (DEFAULT_MODEL, LLM_ERRORS, SOURCE_LANGUAGES, breakdown, error_message, explain,
+                 translate)
 
 app = Flask(__name__)
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -23,7 +24,7 @@ MODEL = DEFAULT_MODEL
 # Public-deployment guards: capped input length, and a per-visitor limit on LLM calls
 # so the free LLM quota can't be drained by one person.
 MAX_TEXT = int(os.environ.get("MAX_TEXT_LENGTH", 200))
-RATE_LIMIT = int(os.environ.get("RATE_LIMIT_PER_MINUTE", 20))
+RATE_LIMIT = int(os.environ.get("RATE_LIMIT_PER_MINUTE", 30))
 _hits = defaultdict(deque)
 _hits_lock = threading.Lock()
 
@@ -97,6 +98,21 @@ def explain_word():
         return jsonify(error="Too many requests — please wait a minute."), 429
     try:
         return jsonify(explain(analyze(word, target), MODEL, target))
+    except LLM_ERRORS as e:
+        return jsonify(error=llm_error(e)), 502
+
+
+@app.get("/api/words")
+def words():
+    """Word-by-word breakdown with English glosses."""
+    word = read_text("word", MAX_TEXT * 2)
+    target = request.args.get("to", "ja")
+    if not word or target not in TARGETS:
+        return jsonify(error="Bad request."), 400
+    if too_many_requests():
+        return jsonify(error="Too many requests — please wait a minute."), 429
+    try:
+        return jsonify(parts=breakdown(word, target, MODEL))
     except LLM_ERRORS as e:
         return jsonify(error=llm_error(e)), 502
 

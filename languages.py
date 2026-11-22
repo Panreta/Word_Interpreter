@@ -97,6 +97,31 @@ def analyze_ipa(word, target):
             "romanization": f"/{speech.phonemes(word, target)}/"}
 
 
+def split_words(word, target):
+    """The word's parts, in order, for a word-by-word breakdown (from a tokenizer, not the LLM)."""
+    if target == "ja":
+        parts = japanese.split_words(word)
+    elif target in ("zh", "yue"):
+        parts = split_chinese(word)
+    else:
+        parts = [w.strip(".,!?¡¿;:\"'()") for w in word.split()]
+    return [p for p in parts if p.strip()]
+
+
+def split_chinese(word):
+    import logging
+
+    import jieba
+    jieba.setLogLevel(logging.ERROR)
+    parts = [w for w in jieba.lcut(word) if re.search(HAN, w)]
+    if len(parts) == 1 and len(word) > 2:
+        # A single compound (火车站): split off its longest known leading word (火车 + 站).
+        for n in range(len(word) - 1, 1, -1):
+            if jieba.dt.FREQ.get(word[:n]):
+                return [word[:n], word[n:]]
+    return parts
+
+
 def llm_facts(info):
     """Verified pronunciation data handed to the LLM so its tips stay grounded."""
     target = info["target"]

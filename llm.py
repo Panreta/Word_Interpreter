@@ -10,7 +10,7 @@ import re
 
 import requests
 
-from languages import TARGETS, is_valid_word, llm_facts
+from languages import TARGETS, is_valid_word, llm_facts, split_words
 
 LLM_API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("GROQ_API_KEY")
 LLM_API_URL = os.environ.get("LLM_API_URL", "https://api.groq.com/openai/v1")
@@ -223,3 +223,37 @@ def mostly_latin(text):
     latin = len(re.findall(r"[A-Za-z]", text))
     cjk = len(re.findall(r"[\u3040-\u30ff\u4e00-\u9fff]", text))
     return latin > cjk
+
+
+# --------------------------------------------------------------------------
+# Word-by-word breakdown (always in English)
+# --------------------------------------------------------------------------
+
+GLOSS_SCHEMA = {
+    "type": "object",
+    "properties": {"glosses": {"type": "array", "items": {"type": "string"}}},
+    "required": ["glosses"],
+}
+
+GLOSS_PROMPT = """You help an English-speaking learner read {target}.
+You are given a {target} phrase and its words, in order, as a JSON list.
+Respond ONLY with JSON:
+- glosses: one English gloss per word, in the same order and the same number of
+  items as the list: a few English words giving what that word means in this
+  phrase. For grammatical words (particles, endings, articles, measure words)
+  give their function in English, e.g. "topic marker", "polite ending", "the".
+  Always write the glosses in English."""
+
+
+def breakdown(word, target, model):
+    """[{"text", "gloss"}] for each word of the phrase, glossed in English; [] for a single word."""
+    words = split_words(word, target)
+    if len(words) < 2:
+        return []
+    system = GLOSS_PROMPT.format(target=TARGETS[target]["llm"])
+    user = json.dumps({"phrase": word, "words": words}, ensure_ascii=False)
+    for temperature in (0.1, 0.6):  # retry once if the glosses don't line up
+        glosses = [str(g).strip() for g in ask_llm(system, user, GLOSS_SCHEMA, model, temperature)["glosses"]]
+        if len(glosses) == len(words) and all(g and mostly_latin(g) for g in glosses):
+            return [{"text": w, "gloss": g} for w, g in zip(words, glosses)]
+    raise LLMError("couldn't get a word-by-word breakdown; please try again")

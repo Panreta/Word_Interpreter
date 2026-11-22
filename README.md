@@ -12,6 +12,8 @@ Type a word in any language, choose an **output language** — 日本語 Japanes
 
 Translation, meanings and tips come from a free local LLM through [Ollama](https://ollama.com), grounded in the dictionary data.
 
+Phrases and compound words also get a **word-by-word breakdown** on the card, always glossed in English (私は学生です → 私 *I* · は *topic marker* · 学生 *student* · です *polite ending*). Words are split by a tokenizer (OpenJTalk for Japanese, jieba for Chinese, spaces otherwise); only the glosses come from the LLM. The page also keeps your **10 most recent lookups** (stored in your browser only); click one to look it up again.
+
 \* Kokoro has no Cantonese voice, so Cantonese audio uses [edge-tts](https://github.com/rany2/edge-tts) (free, but sends the word to Microsoft's online TTS service).
 
 ## Start the website
@@ -35,7 +37,7 @@ This also prints a temporary public link like `https://random-words.trycloudflar
 
 - The link only works while `./start.sh --public` is running and your computer is awake.
 - You get a new link every time you start it.
-- Anyone with the link can use the site (running on your computer), so only share it with people you trust. Inputs are limited to 200 characters (`MAX_TEXT_LENGTH`) and 20 requests per minute per visitor (`RATE_LIMIT_PER_MINUTE`).
+- Anyone with the link can use the site (running on your computer), so only share it with people you trust. Inputs are limited to 200 characters (`MAX_TEXT_LENGTH`) and 30 requests per minute per visitor (about 10 lookups) (`RATE_LIMIT_PER_MINUTE`).
 
 ### If something goes wrong
 

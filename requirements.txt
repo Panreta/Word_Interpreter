@@ -1,6 +1,7 @@
 kokoro>=0.9.4
 misaki[ja,zh]
 pypinyin
+jieba
 ToJyutping
 edge-tts
 soundfile
